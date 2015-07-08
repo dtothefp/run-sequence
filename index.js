@@ -10,15 +10,17 @@ function verifyTaskSets(gulp, taskSets, skipArrays) {
 	}
 	var foundTasks = {};
 	taskSets.forEach(function(t) {
-		var isTask = typeof t === "string",
+    var taskType = typeof t;
+		var isGulpTask = typeof t === "string",
+      isFunction = typeof t === "function",
 			isArray = !skipArrays && Array.isArray(t);
-		if(!isTask && !isArray) {
+		if(!isGulpTask && !isArray) {
 			throw new Error("Task "+t+" is not a valid task string.");
 		}
-		if(isTask && !gulp.hasTask(t)) {
+		if(isGulpTask && !gulp.hasTask(t) && !isFunction) {
 			throw new Error("Task "+t+" is not configured as a task on gulp.  If this is a submodule, you may need to use require('run-sequence').use(gulp).");
 		}
-		if(skipArrays && isTask) {
+		if(skipArrays && isGulpTask) {
 			if(foundTasks[t]) {
 				throw new Error("Task "+t+" is listed more than once. This is probably a typo.");
 			}
@@ -55,12 +57,13 @@ function runSequence(gulp) {
 				console.log(colors.red('Error running task sequence:'), err);
 			}
 		},
-
 		onError = function(err) {
 			finish(err);
 		},
 		onTaskEnd = function(event) {
-			var idx = currentTaskSet.indexOf(event.task);
+      var task = typeof event === 'object' ? event.task : event,
+        idx = idx = currentTaskSet.indexOf(event.task);
+
 			if(idx > -1) {
 				currentTaskSet.splice(idx,1);
 			}
@@ -71,12 +74,31 @@ function runSequence(gulp) {
 
 		runNextSet = function() {
 			if(taskSets.length) {
-				var command = taskSets.shift();
+				var command = taskSets.shift(),
+          lastTaskType, count = -1;
 				if(!Array.isArray(command)) {
 					command = [command];
 				}
+        var reduced = command.reduce(function(list, task) {
+          var taskType = typeof task;
+          console.log('TYPE', taskType, lastTaskType);
+          if(taskType !== lastTaskType) {
+            count += 1;
+            task = [task];
+          }
+
+          if(list[count]) {
+            console.log('COUNT EXISTS', count, list[count]);
+            list[count].push(task);
+          } else {
+            list.push(task);
+          }
+          list[count].type = taskType;
+          lastTaskType = taskType;
+          return list;
+        }, []);
 				currentTaskSet = command;
-				gulp.start.apply(gulp, command);
+        gulp.start.apply(gulp, command);
 			} else {
 				finish();
 			}
